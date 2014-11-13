@@ -2,79 +2,47 @@ angular.module 'asTodo',['asOrbweaver','SignalR']
 
 todoApp = angular.module 'asTodo'
 
-todoApp.factory "TodoService", ->
-  todos: [
-    {completed: false, content: "first todo", points: 32}
-    {completed: true, content: "second todo", points: 42}
-    {completed: true, content: "third todo", points: 52}
-  ]
-  tally:
-    points: 0
+todoApp.factory "asTodoApi",(asRestfulResource, asRestfulService)->
+  res = new asRestfulResource '/api/todos/:id', {}
+  new asRestfulService.withPromises res
+
+
+todoApp.factory "TodoService", (asTodoApi,$,$q,$rootScope)->
+  todos = [ ]
+  tally = { points: 0}
+  hub = $.connection.todosHub
+  hub.client.onTotalsUpdated = (pointTally) ->
+    tally.points = pointTally.pointsAvailable
+    $rootScope.$apply() unless $rootScope.$$phase?
+
+  todos: todos
+  tally: tally
 
   fetchTodos: ()->
-    @todos
+    defer = asTodoApi.all()
+    defer.then (res)->
+      angular.copy res, todos
 
   fetchTotals: ()->
-    @tally.points = _(@todos).reduce( ( (total,todo) -> return total + todo.points ),0 )
+    $q.when $.connection.hub.start(), () ->
+      hub.server.fetchTotals()
 
   removeTodo: (todo)->
-    index = @todos.indexOf todo
-    @todos.splice index,1
-    @fetchTotals()
-
-  newTodo: () ->
-    {}
+    q = asTodoApi.delete todo
+    q.then ()->
+      index = todos.indexOf todo
+      todos.splice index,1
 
   addTodo: (todo)->
-    @todos.push todo
-    @fetchTotals()
+    q = asTodoApi.save todo
+    q.then () ->
+      todos.push todo
+
+  newTodo: () ->
+    asTodoApi.empty()
 
   updateTodo: (todo)->
-    index = @todos.indexOf todo
-    @todos[index] = todo
-    @fetchTotals()
-
-#todoApp.factory "asTodoApi",(asRestfulResource, asRestfulService)->
-#  res = new asRestfulResource '/api/todos/:id', {}
-#  new asRestfulService.withPromises res
-#
-#
-#todoApp.factory "TodoService", (asTodoApi,$,$q,$rootScope)->
-#  todos = [ ]
-#  tally = { points: 0}
-#  hub = $.connection.todosHub
-#  hub.client.onTotalsUpdated = (pointTally) ->
-#    tally.points = pointTally.pointsAvailable
-#    $rootScope.$apply() unless $rootScope.$$phase?
-#
-#  todos: todos
-#  tally: tally
-#
-#  fetchTodos: ()->
-#    defer = asTodoApi.all()
-#    defer.then (res)->
-#      angular.copy res, todos
-#
-#  fetchTotals: ()->
-#    $q.when $.connection.hub.start(), () ->
-#      hub.server.fetchTotals()
-#
-#  removeTodo: (todo)->
-#    q = asTodoApi.delete todo
-#    q.then ()->
-#      index = todos.indexOf todo
-#      todos.splice index,1
-#
-#  addTodo: (todo)->
-#    q = asTodoApi.save todo
-#    q.then () ->
-#      todos.push todo
-#
-#  newTodo: () ->
-#    asTodoApi.empty()
-#
-#  updateTodo: (todo)->
-#    asTodoApi.save todo
+    asTodoApi.save todo
 
 todoApp.controller 'TodoController', ($scope,TodoService) ->
   TodoService.fetchTotals()
